@@ -1,0 +1,14 @@
+{
+    "docker_socket": "/var/run/docker.sock",
+    "image_store": "./store",
+    "deployments": [
+        {
+            "name": "main",
+            "args": ["-p8001:8000"]
+        },
+        {
+            "name": "secondary",
+            "args": ["-p", "8002:8000"]
+        }
+    ]
+}
