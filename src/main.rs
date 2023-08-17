@@ -33,7 +33,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // Determine the config file we are going to use and import config
     // "config" contains the final config for the system
     let config_path = cli.config.unwrap_or(PathBuf::from("/etc/edd/config.json"));
-    let config = config_file::process_config_file(config_path).unwrap();
+    let config = match config_file::process_config_file(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            // TODO: Convert to proper error
+            println!("{}", e);
+            return Ok(());
+        }
+    };
 
     dbg!(&config);
 

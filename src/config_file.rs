@@ -29,7 +29,7 @@ pub struct Config {
     pub mutual_tls_ca_certs: String,
 }
 
-pub fn process_config_file(path: PathBuf) -> Result<Config, ()> {
+pub fn process_config_file(path: PathBuf) -> Result<Config, String> {
     let config_file = std::fs::read_to_string(&path).unwrap();
     let config: EDConfig = serde_json::from_str(&config_file).unwrap();
 
@@ -38,7 +38,7 @@ pub fn process_config_file(path: PathBuf) -> Result<Config, ()> {
         .to_owned()
         .unwrap_or("/var/run/docker.socket".into());
 
-    Ok(Config {
+    let complete = Config {
         config_file: path,
         docker_socket,
         container_prefix: format!("/{}", config.container_prefix.unwrap_or("ed_".into())),
@@ -48,5 +48,31 @@ pub fn process_config_file(path: PathBuf) -> Result<Config, ()> {
         mutual_tls_ca_certs: config
             .mututal_tls_ca_certs
             .unwrap_or("/etc/edd/ca.crt".into()),
-    })
+    };
+
+    check_config(&complete).map_err(|e| format!("Error processing config file: {}", e))?;
+
+    Ok(complete)
+}
+
+fn check_config(config: &Config) -> Result<(), String> {
+    if PathBuf::from(&config.tls_certs).exists() == false {
+        return Err(format!(
+            "tls_certs file ({}) does not exist",
+            config.tls_certs
+        ));
+    }
+
+    if PathBuf::from(&config.tls_certs).exists() == false {
+        return Err(format!("tls_key file ({}) does not exist", config.tls_key));
+    }
+
+    if PathBuf::from(&config.mutual_tls_ca_certs).exists() == false {
+        return Err(format!(
+            "mutual_tls_ca_certs file ({}) does not exist",
+            config.mutual_tls_ca_certs
+        ));
+    }
+
+    Ok(())
 }
