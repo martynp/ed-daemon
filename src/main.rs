@@ -5,6 +5,7 @@ use std::error::Error;
 use std::path::PathBuf;
 
 use clap::Parser;
+use rocket::data::{Limits, ToByteUnit};
 use tokio::sync::Mutex;
 
 mod api;
@@ -31,10 +32,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     // Determine the config file we are going to use and import config
     // "config" contains the final config for the system
-    let config_path = cli
-        .config
-        .unwrap_or(PathBuf::from("/etc/edd/edgedeploy.json"));
+    let config_path = cli.config.unwrap_or(PathBuf::from("/etc/edd/config.json"));
     let config = config_file::process_config_file(config_path).unwrap();
+
+    dbg!(&config);
 
     // Client to communcate with the selected docker socket
     let mut docker = docker_client::DockerClient::new(&config.docker_socket);
@@ -43,7 +44,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     docker.get_images().await?;
 
-    let _rocket = rocket::build()
+    let figment = rocket::Config::figment()
+        .merge(("port", 8855))
+        .merge(("address", "0.0.0.0"))
+        .merge(("limits", Limits::new().limit("file", 2.gibibytes())))
+        .merge(("tls.certs", config.tls_certs.to_owned()))
+        .merge(("tls.key", config.tls_key.to_owned()))
+        .merge(("tls.mutual.ca_certs", config.mutual_tls_ca_certs.to_owned()));
+
+    let _rocket = rocket::custom(figment)
         .manage(Mutex::new(docker))
         .manage(config)
         .manage(Mutex::new(manager))

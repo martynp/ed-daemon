@@ -1,10 +1,12 @@
 {
     "docker_socket": "/var/run/docker.sock",
-    "image_store": "./store",
+    "tls_key": "./ssl/server.key",
+    "tls_certs": "./ssl/server.crt",
+    "mututal_tls_ca_certs": "./ssl/rootCA.crt",
     "deployments": [
         {
             "name": "main",
-            "args": ["-p8001:8000"]
+            "args": ["-p8001:80"]
         },
         {
             "name": "secondary",
