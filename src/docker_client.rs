@@ -6,9 +6,11 @@ use hyperlocal::{UnixClientExt, UnixConnector, Uri};
 
 use crate::docker_structs::*;
 
+/// Provides accessors for Docker API and Docker CLI functions
+
 pub struct DockerClient {
     address: String,
-    _client: ClientType,
+    _client: ClientType, // Future - remote sockets?
 }
 
 enum ClientType {
@@ -30,6 +32,10 @@ impl DockerClient {
         }
     }
 
+    /// Returns a Vec of ImageList containing information about installed images
+    ///
+    /// More data is available, add it to the ImageList struct in ./src/docker_structs.rs
+    /// for serde to extract it
     pub async fn get_images(&mut self) -> Result<Vec<ImageList>, Box<dyn Error + Send + Sync>> {
         let response = self.get_request("/images/json").await?;
         let response_string = String::from_utf8(response.to_vec()).unwrap();
@@ -37,6 +43,7 @@ impl DockerClient {
         Ok(images)
     }
 
+    /// Gets a list of contianers - including stopped containers
     pub async fn get_containers(
         &mut self,
     ) -> Result<Vec<RunningContainer>, Box<dyn Error + Send + Sync>> {
@@ -47,6 +54,8 @@ impl DockerClient {
         Ok(running_containers)
     }
 
+    /// Gets information in a running container, add fields to InspetContainer in
+    /// ./src/docker_structs.rs to gather additional fields
     pub async fn inspect_running_container(
         &mut self,
         id: &str,
@@ -160,6 +169,9 @@ impl DockerClient {
         Ok(())
     }
 
+    /// Create a new container using the docker cli
+    ///
+    /// Docker cli is used so we avoid having to parse/map argments to the docker API
     pub fn start_with_cli(
         &self,
         name: &str,
@@ -173,11 +185,12 @@ impl DockerClient {
             .output();
     }
 
+    /// Provides a streaming file read, we can take a saved file (i.e. a tempfile from Rocket)
+    /// and push parts of it t oan async handler without needing to load the whole file at once
     async fn streaming_file_read(
         &self,
         filename: &str,
     ) -> Result<Body, Box<dyn Error + Send + Sync>> {
-        // Serve a file by asynchronously reading it by chunks using tokio-util crate.
         if let Ok(file) = tokio::fs::File::open(filename).await {
             let stream =
                 tokio_util::codec::FramedRead::new(file, tokio_util::codec::BytesCodec::new());
@@ -191,6 +204,8 @@ impl DockerClient {
         )))
     }
 
+    /// Stops a running container, will return Ok(()) if the container is already stopped
+    /// but will Err if the container id does not exist
     pub async fn stop_running_container(
         &mut self,
         id: &str,
@@ -221,6 +236,7 @@ impl DockerClient {
         Ok(())
     }
 
+    /// Remove a stopped container
     pub async fn remove_stopped_container(
         &mut self,
         id: &str,
@@ -240,6 +256,7 @@ impl DockerClient {
         Ok(())
     }
 
+    /// Helper function for simple GET requests - TODO remove and use request()
     async fn get_request(&self, path: &str) -> Result<Bytes, Box<dyn Error + Send + Sync>> {
         let url = Uri::new(&self.address, path).into();
 
@@ -252,6 +269,7 @@ impl DockerClient {
         Ok(body)
     }
 
+    /// Helper function for async requests using Hyper
     async fn request(
         &self,
         method: hyper::Method,
@@ -272,6 +290,7 @@ impl DockerClient {
         Ok(response)
     }
 
+    /// Process uri to get scheme - TODO: a lot!
     fn get_uri_scheme(_address: &str) -> &str {
         return "unix";
     }

@@ -1,5 +1,7 @@
 # ED Daemon
 
+# WIP - Basic load/stop/info functionality in place, more soon!
+
 Ed is a simple docker runtime manager for pushing container images to remote systems - the intention is to provide a simple mechanism to deploy containers which does not rely on maintaing centralised registries.
 
 This is the daemon which runs on the remote system.
