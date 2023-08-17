@@ -1,9 +1,16 @@
 [package]
 name = "ed-daemon"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Martyn Pittuck-Schols <martyn@rustfoo.com>"]
+license = "MIT"
+description = """
+Simple docker based container deployment
+"""
+homepage = "https://github.com/martynp/ed-daemon"
+documentation = "https://github.com/martynp/ed-daemon"
+repository = "https://github.com/martynp/ed-daemon"
+readme = "readme.md"
 
 [dependencies]
 clap = { version = "4.3", features = ["derive"] }
@@ -13,5 +20,5 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.29", features = ["full"] }
 rocket = { version = "0.5.0-rc.3", features = ["json", "tls", "mtls"] }
-log = "0.4.19"
-tokio-util = "0.7.8"
+log = "0.4"
+tokio-util = "0.7"
