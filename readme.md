@@ -48,19 +48,28 @@ The mTLS security requires a server certificate and key, and a CA certificate wh
 
 ## Example
 
-In this example an nginx container image is generated containing the files for a static website, the created image is pushed to the remote endpoint.
+In this example an alpine/lighttpd container image is generated containing the files for a static website, the created image is pushed to the remote endpoint.
 
 `Dockerfile`:
 
 ``` Dockerfile
-FROM nginx:latest
+FROM alpine:latest
 
-COPY ./website/ /usr/share/nginx/html/
+RUN apk add lighttpd curl && rm -rf /var/cache/apk/*
+
+COPY ./website /var/www/localhost/htdocs
+
+HEALTHCHECK --interval=1m --timeout=1s \
+  CMD curl -f http://localhost/ || exit 1
+
+EXPOSE 80
+
+ENTRYPOINT ["/usr/sbin/lighttpd", "-D", "-f", "/etc/lighttpd/lighttpd.conf"]
 ```
 
 ``` bash
 docker build . -t website:latest
-docker save website:latest | curl --cacert ca.crt \
+docker save website:latest | gzip | curl --cacert ca.crt \
      --key client.key \
      --cert client.crt \
      -X POST -H "Content-Type:application/x-tar" -T - 'https://192.168.0.100:8866/v1/website/load'
@@ -90,3 +99,20 @@ The service is not enabled or started, once the required keys and certificates a
 systemctl enable ed-daemon
 systemctl start ed-daemon
 ```
+
+## Configuration File
+
+The full configuration file (`/etc/edd/config.toml`, or set with the `--config` parameter for the `ed-daemon` executable) has the following defaults:
+
+``` json
+{
+    "docker_socket": "/var/run/docker.sock",
+    "container_prefix": "ed_",
+    "tls_key": "/etc/edd/server.key",
+    "tls_certs": "/etc/edd/server.crt",
+    "mututal_tls_ca_certs": "/etc/edd/ca.crt",
+    "deployments": [ ... ]
+}
+```
+
+Only the `deployments` section is required.

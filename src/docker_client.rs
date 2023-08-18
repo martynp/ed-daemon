@@ -216,7 +216,7 @@ impl DockerClient {
             return Ok(());
         }
 
-        let response = self
+        let response = self 
             .request(
                 hyper::Method::POST,
                 &format!("/containers/{}/stop", id),
