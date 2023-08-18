@@ -169,6 +169,17 @@ impl DockerClient {
         Ok(())
     }
 
+    pub async fn start(&self, id: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+        self.request(
+            hyper::Method::POST,
+            &format!("/containers/{}/start", id),
+            "{}",
+        )
+        .await?;
+
+        Ok(())
+    }
+
     /// Create a new container using the docker cli
     ///
     /// Docker cli is used so we avoid having to parse/map argments to the docker API
@@ -216,7 +227,7 @@ impl DockerClient {
             return Ok(());
         }
 
-        let response = self 
+        let response = self
             .request(
                 hyper::Method::POST,
                 &format!("/containers/{}/stop", id),

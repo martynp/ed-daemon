@@ -77,9 +77,45 @@ pub async fn get_deployment(
     Err(Status::NotFound)
 }
 
-#[post("/deployments/<name>/stop")]
+#[post("/deployments/<name>/start")]
+pub async fn start_deployment(
+    name: String,
+    config: &State<Config>,
+    docker: &State<Mutex<DockerClient>>,
+    manager: &State<Mutex<Manager>>,
+) -> Result<(Status, String), Status> {
+    let mut docker = docker.lock().await;
+    let mut manager = manager.lock().await;
+
+    // Update the info on deployments in case the container is already running
+    manager
+        .update_deployments(&config, &mut docker)
+        .await
+        .unwrap();
+
+    // Look for the deployment
+    let result = manager.deployments.iter_mut().find(|d| d.name == name);
+    if result.is_none() {
+        return Err(Status::NotFound);
+    }
+    let deployment = result.unwrap();
+
+    if deployment.state == crate::manager::State::Running {
+        return Ok((Status::Ok, "{}".into()));
+    }
+
+    docker
+        .start(&deployment.id)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    return Ok((Status::Ok, "{}".into()));
+}
+
+#[post("/deployments/<name>/stop?<retain>")]
 pub async fn stop_deployment(
     name: String,
+    retain: Option<bool>,
     config: &State<Config>,
     docker: &State<Mutex<DockerClient>>,
     manager: &State<Mutex<Manager>>,
@@ -93,7 +129,11 @@ pub async fn stop_deployment(
         .await
         .unwrap();
 
-    stop_and_remove(&name, &mut docker, &mut manager, true).await?;
+    if retain.is_some() && retain.unwrap() == true {
+        stop(&name, &mut docker, &mut manager, true).await?;
+    } else {
+        stop_and_remove(&name, &mut docker, &mut manager, true).await?;
+    }
 
     return Ok((Status::Ok, "{}".into()));
 }
@@ -196,6 +236,30 @@ pub async fn load(
     }
 
     Err(Status::InternalServerError)
+}
+
+async fn stop(
+    name: &str,
+    docker: &mut DockerClient,
+    manager: &mut Manager,
+    fail_hard: bool,
+) -> Result<(), Status> {
+    let result = manager.deployments.iter_mut().find(|d| d.name == name);
+    if result.is_none() {
+        return Err(Status::NotFound);
+    }
+    let deployment = result.unwrap();
+
+    let result = docker
+        .stop_running_container(&deployment.id)
+        .await
+        .map_err(|_| Status::InternalServerError);
+    if fail_hard && result.is_err() {
+        return Err(result.unwrap_err());
+    }
+    deployment.state = crate::manager::State::Stopped;
+
+    Ok(())
 }
 
 async fn stop_and_remove(
