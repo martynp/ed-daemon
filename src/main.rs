@@ -66,6 +66,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .mount(
             "/v1/",
             routes![
+                api::delete_deployment,
                 api::get_deployments,
                 api::get_deployment,
                 api::load,

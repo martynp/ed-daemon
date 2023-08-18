@@ -112,10 +112,9 @@ pub async fn start_deployment(
     return Ok((Status::Ok, "{}".into()));
 }
 
-#[post("/deployments/<name>/stop?<retain>")]
+#[post("/deployments/<name>/stop")]
 pub async fn stop_deployment(
     name: String,
-    retain: Option<bool>,
     config: &State<Config>,
     docker: &State<Mutex<DockerClient>>,
     manager: &State<Mutex<Manager>>,
@@ -129,11 +128,29 @@ pub async fn stop_deployment(
         .await
         .unwrap();
 
-    if retain.is_some() && retain.unwrap() == true {
-        stop(&name, &mut docker, &mut manager, true).await?;
-    } else {
-        stop_and_remove(&name, &mut docker, &mut manager, true).await?;
-    }
+    stop(&name, &mut docker, &mut manager, true).await?;
+
+    return Ok((Status::Ok, "{}".into()));
+}
+
+#[delete("/deployments/<name>")]
+pub async fn delete_deployment(
+    name: String,
+    config: &State<Config>,
+    docker: &State<Mutex<DockerClient>>,
+    manager: &State<Mutex<Manager>>,
+) -> Result<(Status, String), Status> {
+    let mut manager = manager.lock().await;
+
+    // Update the info on deployments in case the container is already stopped
+    let mut docker = docker.lock().await;
+    manager
+        .update_deployments(&config, &mut docker)
+        .await
+        .unwrap();
+
+    stop(&name, &mut docker, &mut manager, false).await?;
+    remove(&name, &mut docker, &mut manager, false).await?;
 
     return Ok((Status::Ok, "{}".into()));
 }
@@ -170,7 +187,8 @@ pub async fn load(
         .unwrap();
 
     // Ensure the container is stopped already
-    stop_and_remove(&name, &mut docker, &mut manager, false).await?;
+    stop(&name, &mut docker, &mut manager, false).await?;
+    remove(&name, &mut docker, &mut manager, false).await?;
 
     let result = config.deployments.iter().find(|d| d.name == name);
     if result.is_none() {
@@ -262,7 +280,7 @@ async fn stop(
     Ok(())
 }
 
-async fn stop_and_remove(
+async fn remove(
     name: &str,
     docker: &mut DockerClient,
     manager: &mut Manager,
@@ -274,15 +292,6 @@ async fn stop_and_remove(
         return Err(Status::NotFound);
     }
     let deployment = result.unwrap();
-
-    let result = docker
-        .stop_running_container(&deployment.id)
-        .await
-        .map_err(|_| Status::InternalServerError);
-    if fail_hard && result.is_err() {
-        return Err(result.unwrap_err());
-    }
-    deployment.state = crate::manager::State::Stopped;
 
     let result = docker
         .remove_stopped_container(&deployment.id)
