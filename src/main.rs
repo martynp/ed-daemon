@@ -14,6 +14,9 @@ mod docker_client;
 mod docker_structs;
 mod manager;
 
+/// Exit Codes
+///  1 - Bad Config File
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -36,13 +39,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let config = match config_file::process_config_file(config_path) {
         Ok(c) => c,
         Err(e) => {
-            // TODO: Convert to proper error
             println!("{}", e);
-            return Ok(());
+            std::process::exit(1);
         }
     };
-
-    dbg!(&config);
 
     // Client to communcate with the selected docker socket
     let mut docker = docker_client::DockerClient::new(&config.docker_socket);

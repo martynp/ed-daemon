@@ -98,6 +98,13 @@ pub async fn stop_deployment(
     return Ok((Status::Ok, "{}".into()));
 }
 
+#[derive(Serialize)]
+pub struct LoadResult {
+    pub outcome: String,
+    pub state: String,
+    pub health: String,
+}
+
 #[post("/deployments/<name>/load", data = "<container>")]
 pub async fn load(
     name: String,
@@ -105,7 +112,7 @@ pub async fn load(
     config: &State<Config>,
     docker: &State<Mutex<DockerClient>>,
     manager: &State<Mutex<Manager>>,
-) -> Result<(Status, String), Status> {
+) -> Result<(Status, Json<LoadResult>), Status> {
     // Ensure the deployment name actually exists
     let mut docker = docker.lock().await;
     let mut manager = manager.lock().await;
@@ -163,12 +170,32 @@ pub async fn load(
         .deployments
         .iter()
         .find(|d| d.name == name)
-        .unwrap().state == crate::manager::State::Running;
+        .unwrap()
+        .state
+        == crate::manager::State::Running;
     if is_running == false {
         return Err(Status::InternalServerError);
     }
 
-    Ok((Status::Ok, "{}".into()))
+    manager
+        .update_deployments(&config, &mut docker)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    let result = manager.deployments.iter().find(|d| d.name == name);
+
+    if let Some(deployment) = result {
+        return Ok((
+            Status::Ok,
+            Json(LoadResult {
+                outcome: "success".into(),
+                health: deployment.health.to_owned(),
+                state: deployment.state.to_string(),
+            }),
+        ));
+    }
+
+    Err(Status::InternalServerError)
 }
 
 async fn stop_and_remove(
