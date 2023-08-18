@@ -1,6 +1,6 @@
 [package]
 name = "ed-daemon"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 edition = "2021"
 authors = ["Martyn Pittuck-Schols <martyn@rustfoo.com>"]
 license = "MIT"
