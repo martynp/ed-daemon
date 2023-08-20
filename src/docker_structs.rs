@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct ImageList {
@@ -23,11 +23,11 @@ pub struct RunningContainer {
 #[derive(Debug, Deserialize)]
 pub struct InspectContainer {
     #[serde(alias = "State")]
-    pub state : InspectContainerState,
+    pub state: InspectContainerState,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct InspectContainerState {  
+pub struct InspectContainerState {
     #[serde(alias = "Health")]
     pub health: Option<InspectContainerStateHealth>,
     #[serde(alias = "Running")]
@@ -44,4 +44,15 @@ pub struct InspectContainerStateHealth {
 pub struct LoadImageResult {
     #[serde(alias = "Stream")]
     pub stream: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullImageResult {
+    pub status: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PullImage {
+    #[serde(alias = "fromImage")]
+    pub from_image: String,
 }

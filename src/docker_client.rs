@@ -123,45 +123,44 @@ impl DockerClient {
             )));
         }
 
-        let split: Vec<&str> = new_name.split(":").collect();
-        if split.len() != 2 {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Unable to determine repo and tag for provided new_name",
-            )));
-        }
-        let repo = split[0];
-        let tag = split[1];
+        self.rename_image(loaded_image_name.unwrap(), new_name)
+            .await?;
 
-        // Retag the image
+        self.request(hyper::Method::POST, "/images/prune", "{}")
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn pull_container_image(
+        &mut self,
+        image: &str,
+        new_name: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        // Attempt to pull the image
         let mut response = self
             .request(
                 hyper::Method::POST,
-                &format!(
-                    "/images/{}/tag?tag={}&repo={}",
-                    loaded_image_name.unwrap(),
-                    tag,
-                    repo
-                ),
-                "",
+                &format!("/images/create?fromImage={}", image),
+                "{}",
             )
             .await?;
+        let body = hyper::body::to_bytes(response.body_mut()).await?;
+        let response_string = String::from_utf8(body.to_vec()).unwrap();
 
-        // Should be created if the rename works, otherwise error
-        if response.status() != hyper::StatusCode::CREATED {
-            let response_bytes = hyper::body::to_bytes(response.body_mut())
-                .await
-                .unwrap_or(Bytes::default());
+        // Extract the name of the image just pulled
+        let image_name = DockerClient::get_status_image(&response_string);
+        if image_name.is_none() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!(
-                    "Unable to tag image, response was:\n\t{}",
-                    String::from_utf8(response_bytes.to_vec())
-                        .into_iter()
-                        .collect::<String>()
+                    "Unable to determine loaded image repo and tag, response was:\n\t{}",
+                    response_string
                 ),
             )));
         }
+
+        self.rename_image(&image_name.unwrap(), new_name).await?;
 
         self.request(hyper::Method::POST, "/images/prune", "{}")
             .await?;
@@ -301,8 +300,79 @@ impl DockerClient {
         Ok(response)
     }
 
+    /// The pull command can end in one of:
+    ///
+    /// - {"status":"Status: Downloaded newer image for alpine:latest"}
+    /// - {"status":"Status: Image is up to date for alpine:latest"}
+    ///
+    /// This function will return Some(alpine:latest) in the above examples, or
+    /// None if not found
+    fn get_status_image(response_string: &str) -> Option<String> {
+        let mut last_status_message = None;
+
+        for line in response_string.lines() {
+            if line.contains(r#"{"status":"#) {
+                last_status_message = Some(line.trim());
+            }
+        }
+
+        if last_status_message.is_none() {
+            dbg!(response_string);
+            return None;
+        }
+
+        let pull_result: PullImageResult =
+            serde_json::from_str(&last_status_message.unwrap()).unwrap();
+
+        let split = pull_result.status.split(" ").last();
+        if let Some(image) = split {
+            if image.contains(":") {
+                return Some(image.into());
+            }
+        }
+
+        None
+    }
+
     /// Process uri to get scheme - TODO: a lot!
     fn get_uri_scheme(_address: &str) -> &str {
         return "unix";
+    }
+
+    async fn rename_image(
+        &mut self,
+        existing_name: &str,
+        new_name: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let split: Vec<&str> = new_name.split(":").collect();
+        if split.len() != 2 {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Unable to determine repo and tag for provided new_name",
+            )));
+        }
+        let repo = split[0];
+        let tag = split[1];
+        let mut response = self
+            .request(
+                hyper::Method::POST,
+                &format!("/images/{}/tag?tag={}&repo={}", existing_name, tag, repo),
+                "",
+            )
+            .await?;
+        Ok(if response.status() != hyper::StatusCode::CREATED {
+            let response_bytes = hyper::body::to_bytes(response.body_mut())
+                .await
+                .unwrap_or(Bytes::default());
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!(
+                    "Unable to tag image, response was:\n\t{}",
+                    String::from_utf8(response_bytes.to_vec())
+                        .into_iter()
+                        .collect::<String>()
+                ),
+            )));
+        })
     }
 }

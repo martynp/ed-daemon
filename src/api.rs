@@ -1,6 +1,6 @@
 use rocket::fs::TempFile;
 use rocket::http::Status;
-use rocket::serde::{json::Json, Serialize};
+use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket::State;
 
 use tokio::sync::Mutex;
@@ -163,7 +163,7 @@ pub struct LoadResult {
 }
 
 #[post("/deployments/<name>/load", data = "<container>")]
-pub async fn load(
+pub async fn load_file(
     name: String,
     container: TempFile<'_>,
     config: &State<Config>,
@@ -186,74 +186,33 @@ pub async fn load(
         .await
         .unwrap();
 
-    // Ensure the container is stopped already
-    stop(&name, &mut docker, &mut manager, false).await?;
-    remove(&name, &mut docker, &mut manager, false).await?;
+    let config = config.inner();
+    return start_container(&name, config, &mut docker, &mut manager).await;
+}
 
-    let result = config.deployments.iter().find(|d| d.name == name);
-    if result.is_none() {
-        return Err(Status::NotFound);
-    }
-    let deployment_config = result.unwrap();
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct PullData {
+    path: String,
+}
 
-    let args = if let Some(deployment_config) = &deployment_config.args {
-        deployment_config.iter().map(|a| a.as_str()).collect()
-    } else {
-        vec![]
-    };
+#[post("/deployments/<name>/pull", data = "<pull>")]
+pub async fn pull(
+    name: String,
+    pull: Json<PullData>,
+    config: &State<Config>,
+    docker: &State<Mutex<DockerClient>>,
+    manager: &State<Mutex<Manager>>,
+) -> Result<(Status, Json<LoadResult>), Status> {
+    let mut docker = docker.lock().await;
+    let mut manager = manager.lock().await;
 
-    // Start with name
     docker
-        .start_with_cli(
-            &format!(
-                "{}{}",
-                config.container_prefix.trim_start_matches("/"),
-                name
-            ),
-            &format!(
-                "{}{}:latest",
-                config.container_prefix.trim_start_matches("/"),
-                name,
-            ),
-            args,
-        )
-        .map_err(|_| Status::InternalServerError)?;
-
-    manager
-        .update_deployments(&config, &mut docker)
+        .pull_container_image(&pull.path, "ed_main:latest")
         .await
-        .map_err(|_| Status::InternalServerError)?;
+        .unwrap();
 
-    let is_running = manager
-        .deployments
-        .iter()
-        .find(|d| d.name == name)
-        .unwrap()
-        .state
-        == crate::manager::State::Running;
-    if is_running == false {
-        return Err(Status::InternalServerError);
-    }
-
-    manager
-        .update_deployments(&config, &mut docker)
-        .await
-        .map_err(|_| Status::InternalServerError)?;
-
-    let result = manager.deployments.iter().find(|d| d.name == name);
-
-    if let Some(deployment) = result {
-        return Ok((
-            Status::Ok,
-            Json(LoadResult {
-                outcome: "success".into(),
-                health: deployment.health.to_owned(),
-                state: deployment.state.to_string(),
-            }),
-        ));
-    }
-
-    Err(Status::InternalServerError)
+    return start_container(&name, config, &mut docker, &mut manager).await;
 }
 
 async fn stop(
@@ -305,4 +264,81 @@ async fn remove(
     deployment.name = String::from(name.clone());
 
     Ok(())
+}
+
+async fn start_container(
+    deployment_name: &str,
+    config: &Config,
+    docker: &mut DockerClient,
+    manager: &mut Manager,
+) -> Result<(Status, Json<LoadResult>), Status> {
+    // Ensure the container is stopped already
+    stop(&deployment_name, docker, manager, false).await?;
+    remove(&deployment_name, docker, manager, false).await?;
+
+    let result = config
+        .deployments
+        .iter()
+        .find(|d| d.name == deployment_name);
+    if result.is_none() {
+        return Err(Status::NotFound);
+    }
+    let deployment_config = result.unwrap();
+
+    let args = if let Some(deployment_config) = &deployment_config.args {
+        deployment_config.iter().map(|a| a.as_str()).collect()
+    } else {
+        vec![]
+    };
+
+    // Start with name
+    docker
+        .start_with_cli(
+            &format!(
+                "{}{}",
+                config.container_prefix.trim_start_matches("/"),
+                deployment_name
+            ),
+            &format!(
+                "{}{}:latest",
+                config.container_prefix.trim_start_matches("/"),
+                deployment_name,
+            ),
+            args,
+        )
+        .map_err(|_| Status::InternalServerError)?;
+
+    manager
+        .update_deployments(&config, docker)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    let is_running = manager
+        .deployments
+        .iter()
+        .find(|d| d.name == deployment_name)
+        .unwrap()
+        .state
+        == crate::manager::State::Running;
+    if is_running == false {
+        return Err(Status::InternalServerError);
+    }
+
+    let result = manager
+        .deployments
+        .iter()
+        .find(|d| d.name == deployment_name);
+
+    if let Some(deployment) = result {
+        return Ok((
+            Status::Ok,
+            Json(LoadResult {
+                outcome: "success".into(),
+                health: deployment.health.to_owned(),
+                state: deployment.state.to_string(),
+            }),
+        ));
+    }
+
+    Err(Status::InternalServerError)
 }

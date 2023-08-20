@@ -69,7 +69,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 api::delete_deployment,
                 api::get_deployments,
                 api::get_deployment,
-                api::load,
+                api::load_file,
+                api::pull,
                 api::start_deployment,
                 api::stop_deployment
             ],
