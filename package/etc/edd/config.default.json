@@ -1,0 +1,14 @@
+
+{
+    "docker_socket": "/var/run/docker.sock",
+    "container_prefix": "ed_",
+    "tls_key": "/etc/edd/server.key",
+    "tls_certs": "/etc/edd/server.crt",
+    "mututal_tls_ca_certs": "/etc/edd/ca.crt",
+    "deployments": [
+        {
+            "name": "website",
+            "args": ["-p", "80:8000", "-v", "/var/data/app:/usr/share/nginx/html"]
+        }
+    ]
+}
